@@ -1,0 +1,461 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+local Window = Library:CreateWindow({
+    Title = "Bee Swarm Automator",
+    Footer = "version: 1.4 (Simplified)",
+    Icon = 95816097006870,
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local Tabs = {
+    Farming = Window:AddTab("Farming", "flower"),
+    Buffs = Window:AddTab("Buffs", "zap"),
+    Purchasing = Window:AddTab("Purchasing", "shopping-cart"),
+    Misc = Window:AddTab("Misc", "box"),
+    Tools = Window:AddTab("Tools", "tool"),
+    ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+}
+
+local function getItemCount(itemName)
+    local StatCache = require(game:GetService("ReplicatedStorage").ClientStatCache)
+    local data = StatCache:Get()
+    return data.Eggs[itemName] or 0
+end
+
+local autoFarmEnabled = false
+local autoDigEnabled = false
+local collectBubblesEnabled = false
+local autoConvertEnabled = true
+local autoFarmLoop
+local autoDigLoop
+local noclipEnabled = false
+
+local function claimHiveSlot()
+    for i = 1, 6 do
+        local success, result = pcall(function()
+            game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ClaimHive"):FireServer(i)
+        end)
+        if success then
+            Library:Notify("Claimed Hive Slot: " .. i, 5)
+            break
+        else
+            Library:Notify("Failed to claim Hive Slot: " .. i, 5)
+        end
+    end
+end
+
+local function doAutoFarm()
+    if not autoFarmEnabled then return end
+
+    local player = game.Players.LocalPlayer
+    if not player or not player.Character then return end
+    local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    local humanoid = player.Character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+
+    local fieldName = Options.AutoFarmField.Value
+    local targetField = game.Workspace.FlowerZones:FindFirstChild(fieldName)
+
+    if not targetField or not targetField:FindFirstChild("ColorGroup") then
+        Library:Notify("Invalid field selected!", 5)
+        toggleAutoFarm(false)
+        return
+    end
+
+    -- Телепортация к полю в начале
+    humanoidRootPart.CFrame = targetField.CFrame + Vector3.new(0, 3, 0)
+
+    while autoFarmEnabled do
+        if not player or not player.Character or player.Character.Humanoid.Health <= 0 then
+            toggleAutoFarm(false)
+            break
+        end
+
+        if noclipEnabled then
+            for _, part in pairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+
+        -- Проверка заполненности рюкзака
+        local pollen = player.CoreStats.Pollen.Value
+        local pollenCapacity = player.CoreStats.PollenCapacity.Value
+        local pollenPercentage = (pollen / pollenCapacity) * 100
+
+        -- Автоконверт при заполнении рюкзака на определённый процент
+        if autoConvertEnabled and pollenPercentage >= Options.ConvertAt.Value then
+            -- Остановка автофарма на время конвертации
+            autoFarmEnabled = false
+            Toggles.AutoFarmToggle:SetValue(false)
+
+            -- Телепортация к улью для конвертации
+            humanoidRootPart.CFrame = player.SpawnPos.Value + Vector3.new(0, 5, 0)
+            game:GetService("ReplicatedStorage").Events.PlayerHiveCommand:FireServer("ToggleHoneyMaking")
+            task.wait(5) -- Ждем 5 секунд для завершения конвертации
+
+            -- Возвращаемся к полю после конвертации
+            humanoidRootPart.CFrame = targetField.CFrame + Vector3.new(0, 3, 0)
+
+            -- Включаем автофарм снова
+            autoFarmEnabled = true
+            Toggles.AutoFarmToggle:SetValue(true)
+        end
+
+        -- Фарминг
+        for _, collectible in pairs(game.Workspace.Collectibles:GetChildren()) do
+            if not autoFarmEnabled then break end
+            if collectible and collectible.Parent and collectible:FindFirstChild("FrontDecal") then
+                if (collectible.Position - humanoidRootPart.Position).Magnitude <= 50 then
+                    humanoid:MoveTo(collectible.Position)
+                    humanoid.MoveToFinished:Wait(1)
+                end
+            end
+        end
+
+        -- Сбор пузырьков
+        if collectBubblesEnabled then
+            for _, bubble in pairs(game.Workspace.Particles:GetChildren()) do
+                if not autoFarmEnabled then break end
+                if bubble.Name:find("Bubble") and (bubble.Position - humanoidRootPart.Position).Magnitude <= 50 then
+                    humanoid:MoveTo(bubble.Position)
+                    humanoid.MoveToFinished:Wait(1)
+                end
+            end
+        end
+
+        task.wait(0.1)
+    end
+end
+
+local function toggleAutoFarm(state)
+    autoFarmEnabled = state
+    Toggles.AutoFarmToggle:SetValue(autoFarmEnabled)
+    Library.Toggles.AutoFarmToggle.Text = autoFarmEnabled and "AutoFarm: ON" or "AutoFarm: OFF"
+
+    if autoFarmEnabled then
+        autoFarmLoop = task.spawn(doAutoFarm)
+    else
+        if autoFarmLoop then
+            task.cancel(autoFarmLoop)
+            autoFarmLoop = nil
+        end
+    end
+end
+
+local function toggleAutoDig(state)
+    autoDigEnabled = state
+    Toggles.AutoDigToggle:SetValue(autoDigEnabled)
+    Library.Toggles.AutoDigToggle.Text = autoDigEnabled and "AutoDig: ON" or "AutoDig: OFF"
+
+    if autoDigEnabled then
+        autoDigLoop = task.spawn(function()
+            while autoDigEnabled do
+                game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ToolCollect"):FireServer()
+                task.wait(0.5)
+            end
+        end)
+    else
+        if autoDigLoop then
+            task.cancel(autoDigLoop)
+            autoDigLoop = nil
+        end
+    end
+end
+
+local function toggleCollectBubbles(state)
+    collectBubblesEnabled = state
+    Toggles.CollectBubblesToggle:SetValue(collectBubblesEnabled)
+    Library.Toggles.CollectBubblesToggle.Text = collectBubblesEnabled and "Collect Bubbles: ON" or "Collect Bubbles: OFF"
+end
+
+local function toggleNoclip(state)
+    noclipEnabled = state
+    Toggles.NoclipToggle:SetValue(noclipEnabled)
+    Toggles.NoclipToggle:SetText("Noclip: " .. (noclipEnabled and "ON" or "OFF"))
+end
+
+local function buyBeequipSlots(amount)
+    local args = { "Purchase", { Type = "BeequipStorageSlot", Category = "Eggs", Amount = amount } }
+    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ItemPackageEvent"):InvokeServer(unpack(args))
+end
+
+local function buyAllBundles()
+    for i = 1, 6 do
+        game:GetService("ReplicatedStorage").Events.ItemPackageEvent:InvokeServer("Purchase", {
+            Type = "Dapper Bundle " .. i,
+            Amount = 1,
+            Category = "Bundle",
+        })
+        task.wait(0.1)
+    end
+end
+
+local function upgradeStickerBook(times)
+    for i = 1, times do
+        game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("StickerBookExpand"):FireServer()
+        task.wait(0.1)
+    end
+end
+
+local function buyHiveSlots(times)
+    for i = 1, times do
+        local args = {
+            [1] = "Purchase",
+            [2] = { ["Type"] = "Hive Slot", ["Category"] = "HiveSlot", ["Amount"] = 1 },
+        }
+        game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ItemPackageEvent"):InvokeServer(unpack(args))
+        task.wait(0.1)
+    end
+end
+
+local function useBuff(buffName)
+    if not buffName then return end
+    game:GetService("ReplicatedStorage").Events.PlayerActivesCommand:FireServer({["Name"] = buffName})
+end
+
+local function createBuffToggle(buffName, group)
+    local toggleName = "AutoUse" .. buffName:gsub(" ", "")
+    local lastUsed = 0
+    local cooldown = 30
+
+    group:AddToggle(toggleName, {
+        Text = "Auto Use " .. buffName .. ": OFF",
+        Default = false,
+        Callback = function(state)
+            Toggles[toggleName]:SetValue(state)
+            Toggles[toggleName]:SetText("Auto Use " .. buffName .. ": " .. (state and "ON" or "OFF"))
+            if state then
+                task.spawn(function()
+                    while Toggles[toggleName].Value do
+                        local currentTime = tick()
+                        if currentTime - lastUsed >= cooldown then
+                            useBuff(buffName)
+                            lastUsed = currentTime
+                        end
+                        task.wait(1)
+                    end
+                end)
+            end
+        end
+    })
+end
+
+local FarmSettingsGroup = Tabs.Farming:AddLeftGroupbox("Farming Settings")
+
+FarmSettingsGroup:AddToggle("AutoFarmToggle", {
+    Text = "AutoFarm: OFF",
+    Default = false,
+    Callback = toggleAutoFarm,
+})
+
+FarmSettingsGroup:AddToggle("AutoDigToggle", {
+    Text = "AutoDig: OFF",
+    Default = false,
+    Callback = toggleAutoDig
+})
+
+FarmSettingsGroup:AddToggle("CollectBubblesToggle", {
+    Text = "Collect Bubbles: OFF",
+    Default = false,
+    Callback = toggleCollectBubbles
+})
+
+FarmSettingsGroup:AddToggle("AutoConvertToggle", {
+    Text = "Auto Convert: ON",
+    Default = true,
+    Callback = function(value)
+        autoConvertEnabled = value
+        Toggles.AutoConvertToggle:SetText("Auto Convert: " .. (autoConvertEnabled and "ON" or "OFF"))
+    end
+})
+
+local fields = {}
+for i, v in pairs(game.Workspace.FlowerZones:GetChildren()) do
+    if v:FindFirstChild("ColorGroup") then
+        table.insert(fields, v.Name)
+    end
+end
+
+FarmSettingsGroup:AddDropdown("AutoFarmField", {
+    Values = fields,
+    Default = 1,
+    Text = "Select Field",
+    Searchable = true,
+    Callback = function(Value)
+        Options.AutoFarmField.Value = Value
+    end,
+})
+
+FarmSettingsGroup:AddSlider("ConvertAt", {
+    Text = "Convert At (%)",
+    Default = 90,
+    Min = 1,
+    Max = 100,
+    Rounding = 1,
+    Callback = function(Value)
+        Options.ConvertAt.Value = Value
+    end,
+})
+
+local BuffsGroup = Tabs.Buffs:AddLeftGroupbox("Buffs")
+local buffs = {
+    "Blue Extract",
+    "Red Extract",
+    "Enzymes",
+    "Glue",
+    "Glitter",
+    "Tropical Drink",
+}
+for _, buffName in ipairs(buffs) do
+    createBuffToggle(buffName, BuffsGroup)
+end
+
+local PurchaseGroup = Tabs.Purchasing:AddLeftGroupbox("Purchasing")
+
+PurchaseGroup:AddInput("BeequipAmount", {
+    Default = "1",
+    Numeric = true,
+    Finished = true,
+    Text = "Beequip Slots to Buy",
+    Placeholder = "Amount",
+    Callback = function(Value)
+        local amount = tonumber(Value)
+        if amount and amount > 0 then
+            buyBeequipSlots(amount)
+        else
+            Library:Notify("Invalid beequip amount", 4)
+        end
+    end,
+})
+
+PurchaseGroup:AddButton("Buy All Bundles", buyAllBundles)
+PurchaseGroup:AddButton("Upgrade Sticker Book (50x)", function() upgradeStickerBook(50) end)
+PurchaseGroup:AddButton("Buy Hive Slots (25x)", function() buyHiveSlots(25) end)
+PurchaseGroup:AddButton("Claim Hive Slot", claimHiveSlot)
+
+local MiscGroup = Tabs.Misc:AddLeftGroupbox("Misc")
+
+local function toggleLoopSpeed(state)
+    loopSpeedEnabled = state
+    Toggles.LoopSpeedToggle:SetValue(state)
+    Library.Toggles.LoopSpeedToggle.Text = loopSpeedEnabled and "LoopSpeed: ON" or "LoopSpeed: OFF"
+
+    if loopSpeedEnabled then
+        task.spawn(function()
+            while loopSpeedEnabled do
+                local player = game.Players.LocalPlayer
+                if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+                    player.Character.Humanoid.WalkSpeed = Options.LoopSpeedSlider.Value
+                end
+                task.wait()
+            end
+        end)
+    else
+        local player = game.Players.LocalPlayer
+        if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.WalkSpeed = 16
+        end
+    end
+end
+
+MiscGroup:AddToggle("LoopSpeedToggle", {
+    Text = "LoopSpeed: OFF",
+    Default = false,
+    Callback = toggleLoopSpeed,
+})
+
+MiscGroup:AddSlider("LoopSpeedSlider", {
+    Text = "LoopSpeed Value",
+    Default = 50,
+    Min = 16,
+    Max = 150,
+    Rounding = 1,
+    Callback = function(Value)
+        Options.LoopSpeedSlider.Value = Value
+    end,
+})
+
+MiscGroup:AddButton("Activate Debug Glider", function()
+    task.spawn(function()
+        while true do
+            require(game.ReplicatedStorage.ClientStatCache):Set("EquippedParachute", "DebugGlider")
+            task.wait(20)
+        end
+    end)
+end)
+
+MiscGroup:AddButton("AntiLag", function()
+    local success, result = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/DEBUG-COM/antilag/refs/heads/main/bc8u1VX.lua"))()
+    end)
+    if not success then
+        Library:Notify("Error loading AntiLag: " .. tostring(result), 5)
+    end
+end)
+
+local ToolsGroup = Tabs.Tools:AddLeftGroupbox("Tools")
+
+ToolsGroup:AddButton("Toggle Console", function()
+    local ShowConsole = game:GetService("CoreGui"):FindFirstChild("ShowConsole")
+    if ShowConsole then
+        ShowConsole:Destroy()
+    else
+        local ShowConsole = Instance.new("ScreenGui")
+        ShowConsole.Name = "ShowConsole"
+        ShowConsole.Parent = game:GetService("CoreGui")
+        ShowConsole.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        ShowConsole.ResetOnSpawn = false
+        ShowConsole.IgnoreGuiInset = true
+
+        local TextButton = Instance.new("TextButton")
+        TextButton.Parent = ShowConsole
+        TextButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        TextButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+        TextButton.BorderSizePixel = 0
+        TextButton.Position = UDim2.new(0.467948705, 0, 0.012820513, 0)
+        TextButton.Size = UDim2.new(0, 50, 0, 50)
+        TextButton.Font = Enum.Font.Roboto
+        TextButton.Text = "Show Console"
+        TextButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TextButton.TextScaled = true
+        TextButton.TextSize = 14.000
+        TextButton.TextWrapped = true
+
+        local UICorner = Instance.new("UICorner")
+        UICorner.CornerRadius = UDim.new(0, 12)
+        UICorner.Parent = TextButton
+
+        local UIStroke = Instance.new("UIStroke")
+        UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        UIStroke.Color = Color3.fromRGB(255,255,255)
+        UIStroke.LineJoinMode = Enum.LineJoinMode.Round
+        UIStroke.Thickness = 2
+        UIStroke.Parent = TextButton
+
+        local activated = false
+        TextButton.MouseButton1Click:Connect(function()
+            activated = not activated
+            game:GetService("StarterGui"):SetCore("DevConsoleVisible", activated)
+        end)
+
+        Library:Notify("Console " .. (activated and "enabled" or "disabled") .. "!", 4)
+    end
+end)
+
+ToolsGroup:AddButton("Summon Remote-Spy", function()
+    local success, result = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua"))()
+    end)
+    if not success then
+        Library:Notify("Error loading Remote-Spy: " .. tostring(result), 5)
+    end
