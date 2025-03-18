@@ -32,24 +32,9 @@ end
 local autoFarmEnabled = false
 local autoDigEnabled = false
 local collectBubblesEnabled = false
-local autoConvertEnabled = true
 local autoFarmLoop
 local autoDigLoop
 local noclipEnabled = false
-
-local function claimHiveSlot()
-    for i = 1, 6 do
-        local success, result = pcall(function()
-            game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ClaimHive"):FireServer(i)
-        end)
-        if success then
-            Library:Notify("Claimed Hive Slot: " .. i, 5)
-            break
-        else
-            Library:Notify("Failed to claim Hive Slot: " .. i, 5)
-        end
-    end
-end
 
 local function doAutoFarm()
     if not autoFarmEnabled then return end
@@ -85,30 +70,6 @@ local function doAutoFarm()
                     part.CanCollide = false
                 end
             end
-        end
-
-        -- Проверка заполненности рюкзака
-        local pollen = player.CoreStats.Pollen.Value
-        local pollenCapacity = player.CoreStats.PollenCapacity.Value
-        local pollenPercentage = (pollen / pollenCapacity) * 100
-
-        -- Автоконверт при заполнении рюкзака на определённый процент
-        if autoConvertEnabled and pollenPercentage >= Options.ConvertAt.Value then
-            -- Остановка автофарма на время конвертации
-            autoFarmEnabled = false
-            Toggles.AutoFarmToggle:SetValue(false)
-
-            -- Телепортация к улью для конвертации
-            humanoidRootPart.CFrame = player.SpawnPos.Value + Vector3.new(0, 5, 0)
-            game:GetService("ReplicatedStorage").Events.PlayerHiveCommand:FireServer("ToggleHoneyMaking")
-            task.wait(5) -- Ждем 5 секунд для завершения конвертации
-
-            -- Возвращаемся к полю после конвертации
-            humanoidRootPart.CFrame = targetField.CFrame + Vector3.new(0, 3, 0)
-
-            -- Включаем автофарм снова
-            autoFarmEnabled = true
-            Toggles.AutoFarmToggle:SetValue(true)
         end
 
         -- Фарминг
@@ -270,21 +231,25 @@ FarmSettingsGroup:AddToggle("CollectBubblesToggle", {
     Callback = toggleCollectBubbles
 })
 
-FarmSettingsGroup:AddToggle("AutoConvertToggle", {
-    Text = "Auto Convert: ON",
-    Default = true,
-    Callback = function(value)
-        autoConvertEnabled = value
-        Toggles.AutoConvertToggle:SetText("Auto Convert: " .. (autoConvertEnabled and "ON" or "OFF"))
-    end
-})
-
-local fields = {}
-for i, v in pairs(game.Workspace.FlowerZones:GetChildren()) do
-    if v:FindFirstChild("ColorGroup") then
-        table.insert(fields, v.Name)
-    end
-end
+local fields = {
+    "Sunflower Field",
+    "Dandelion Field",
+    "Mushroom Field",
+    "Blue Flower Field",
+    "Clover Field",
+    "Strawberry Field",
+    "Spider Field",
+    "Bamboo Field",
+    "Pineapple Patch",
+    "Stump Field",
+    "Cactus Field",
+    "Pumpkin Patch",
+    "Pine Tree Forest",
+    "Rose Field",
+    "Mountain Top Field",
+    "Pepper Patch",
+    "Coconut Field"
+}
 
 FarmSettingsGroup:AddDropdown("AutoFarmField", {
     Values = fields,
@@ -293,17 +258,6 @@ FarmSettingsGroup:AddDropdown("AutoFarmField", {
     Searchable = true,
     Callback = function(Value)
         Options.AutoFarmField.Value = Value
-    end,
-})
-
-FarmSettingsGroup:AddSlider("ConvertAt", {
-    Text = "Convert At (%)",
-    Default = 90,
-    Min = 1,
-    Max = 100,
-    Rounding = 1,
-    Callback = function(Value)
-        Options.ConvertAt.Value = Value
     end,
 })
 
@@ -341,7 +295,6 @@ PurchaseGroup:AddInput("BeequipAmount", {
 PurchaseGroup:AddButton("Buy All Bundles", buyAllBundles)
 PurchaseGroup:AddButton("Upgrade Sticker Book (50x)", function() upgradeStickerBook(50) end)
 PurchaseGroup:AddButton("Buy Hive Slots (25x)", function() buyHiveSlots(25) end)
-PurchaseGroup:AddButton("Claim Hive Slot", claimHiveSlot)
 
 local MiscGroup = Tabs.Misc:AddLeftGroupbox("Misc")
 
@@ -459,3 +412,31 @@ ToolsGroup:AddButton("Summon Remote-Spy", function()
     if not success then
         Library:Notify("Error loading Remote-Spy: " .. tostring(result), 5)
     end
+end)
+
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
+
+MenuGroup:AddToggle("KeybindMenuOpen", {
+    Default = Library.KeybindFrame.Visible,
+    Text = "Open Keybind Menu",
+    Callback = function(value)
+        Library.KeybindFrame.Visible = value
+    end,
+})
+
+MenuGroup:AddButton("Unload", function()
+    Library:Unload()
+end)
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+
+ThemeManager:SetFolder("MyScriptHub")
+SaveManager:SetFolder("MyScriptHub/specific-game")
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:LoadAutoloadConfig()
+
+print("Bee Swarm Automator loaded!")
