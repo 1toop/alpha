@@ -187,7 +187,10 @@ end
 local function createBuffToggle(buffName, group)
     local toggleName = "AutoUse" .. buffName:gsub(" ", "")
     local lastUsed = 0
-    local cooldown = 30
+    local cooldown = 600 -- 10 минут для всех баффов, кроме Glitter
+    if buffName == "Glitter" then
+        cooldown = 910 -- 15 минут и 10 секунд для Glitter
+    end
 
     group:AddToggle(toggleName, {
         Text = "Auto Use " .. buffName .. ": OFF",
@@ -200,8 +203,18 @@ local function createBuffToggle(buffName, group)
                     while Toggles[toggleName].Value do
                         local currentTime = tick()
                         if currentTime - lastUsed >= cooldown then
-                            useBuff(buffName)
-                            lastUsed = currentTime
+                            if buffName == "Glitter" then
+                                local player = game.Players.LocalPlayer
+                                local fieldName = Options.AutoFarmField.Value
+                                local targetField = game.Workspace.FlowerZones:FindFirstChild(fieldName)
+                                if targetField and targetField:FindFirstChild("ColorGroup") then
+                                    useBuff(buffName)
+                                    lastUsed = currentTime
+                                end
+                            else
+                                useBuff(buffName)
+                                lastUsed = currentTime
+                            end
                         end
                         task.wait(1)
                     end
@@ -209,6 +222,162 @@ local function createBuffToggle(buffName, group)
             end
         end
     })
+end
+
+local function changeHiveToRed()
+    local hive = {
+        [1] = {
+            [1] = "Vicious",
+            [2] = "Shy",
+            [3] = "Carpenter",
+            [4] = "Vector",
+            [5] = "Vector",
+            [6] = "Vector",
+            [7] = "Vector",
+            [8] = "Spicy",
+            [9] = "Precise",
+            [10] = "Precise"
+        },
+        [2] = {
+            [1] = "Crimson",
+            [2] = "Lion",
+            [3] = "Tadpole",
+            [4] = "Tadpole",
+            [5] = "Vector",
+            [6] = "Spicy",
+            [7] = "Spicy",
+            [8] = "Precise",
+            [9] = "Precise",
+            [10] = "Precise"
+        },
+        [3] = {
+            [1] = "Bear",
+            [2] = "Digital",
+            [3] = "Brave",
+            [4] = "Basic",
+            [5] = "Buoyant",
+            [6] = "Vector",
+            [7] = "Vector",
+            [8] = "Spicy",
+            [9] = "Spicy",
+            [10] = "Precise"
+        },
+        [4] = {
+            [1] = "Photon",
+            [2] = "Riley",
+            [3] = "Tadpole",
+            [4] = "Tadpole",
+            [5] = "Vector",
+            [6] = "Spicy",
+            [7] = "Spicy",
+            [8] = "Precise",
+            [9] = "Precise",
+            [10] = "Precise"
+        },
+        [5] = {
+            [1] = "Tabby",
+            [2] = "Commander",
+            [3] = "Carpenter",
+            [4] = "Vector",
+            [5] = "Vector",
+            [6] = "Vector",
+            [7] = "Vector",
+            [8] = "Spicy",
+            [9] = "Precise",
+            [10] = "Precise"
+        }
+    }
+
+    local plrhive = game:GetService("Players").LocalPlayer.Honeycomb.Value.Cells
+    local r = game:GetService("ReplicatedStorage").Events.ConstructHiveCellFromEgg
+
+    for col,v in pairs(hive) do
+        for row,v in pairs(v) do
+            local cell = plrhive:FindFirstChild("C" .. col .. "," .. row)
+            if cell ~= nil and cell.CellType.Value ~= v .. "Bee" then
+                r:InvokeServer(col, row, v .. "Bee", 1, false)
+                task.wait(0.25)
+            end
+        end
+    end
+end
+
+local function changeHiveToBlue()
+    local hive = {
+        [1] = {
+            [1] = "Looker",
+            [2] = "Bubble",
+            [3] = "Ninja",
+            [4] = "Festive",
+            [5] = "Buoyant",
+            [6] = "Buoyant",
+            [7] = "Buoyant",
+            [8] = "Buoyant",
+            [9] = "Tadpole",
+            [10] = "Tadpole"
+        },
+        [2] = {
+            [1] = "Cool",
+            [2] = "Commander",
+            [3] = "Music",
+            [4] = "Tabby",
+            [5] = "Buoyant",
+            [6] = "Buoyant",
+            [7] = "Buoyant",
+            [8] = "Buoyant",
+            [9] = "Tadpole",
+            [10] = "Tadpole"
+        },
+        [3] = {
+            [1] = "Basic",
+            [2] = "Music",
+            [3] = "Music",
+            [4] = "Fuzzy",
+            [5] = "Buoyant",
+            [6] = "Buoyant",
+            [7] = "Buoyant",
+            [8] = "Buoyant",
+            [9] = "Tadpole",
+            [10] = "Tadpole"
+        },
+        [4] = {
+            [1] = "Bumble",
+            [2] = "Shocked",
+            [3] = "Music",
+            [4] = "Bear",
+            [5] = "Buoyant",
+            [6] = "Buoyant",
+            [7] = "Buoyant",
+            [8] = "Buoyant",
+            [9] = "Tadpole",
+            [10] = "Tadpole"
+        },
+        [5] = {
+            [1] = "Stubborn",
+            [2] = "Bucko",
+            [3] = "Diamond",
+            [4] = "Gummy",
+            [5] = "Buoyant",
+            [6] = "Buoyant",
+            [7] = "Buoyant",
+            [8] = "Buoyant",
+            [9] = "Tadpole",
+            [10] = "Tadpole"
+        }
+    }
+
+    local plrhive = game:GetService("Players").LocalPlayer.Honeycomb.Value.Cells
+    local r = game:GetService("ReplicatedStorage").Events.ConstructHiveCellFromEgg
+
+    for col,v in pairs(hive) do
+        for row,v in pairs(v) do
+            local cell = plrhive:FindFirstChild("C" .. col .. "," .. row)
+            if cell ~= nil and cell.CellType.Value ~= v .. "Bee" then
+                r:InvokeServer(col, row, v .. "Bee", 1, false)
+                task.wait(0.25)
+            end
+        end
+    end
 end
 
 local FarmSettingsGroup = Tabs.Farming:AddLeftGroupbox("Farming Settings")
@@ -413,6 +582,11 @@ ToolsGroup:AddButton("Summon Remote-Spy", function()
         Library:Notify("Error loading Remote-Spy: " .. tostring(result), 5)
     end
 end)
+
+local HiveGroup = Tabs.Tools:AddRightGroupbox("Hive Management")
+
+HiveGroup:AddButton("Change Hive to Red", changeHiveToRed)
+HiveGroup:AddButton("Change Hive to Blue", changeHiveToBlue)
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
 
